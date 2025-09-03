@@ -1,0 +1,129 @@
+# CosyVoice Gradio Docker Image (CPU Only)
+FROM python:3.10-slim
+
+# 환경 변수 설정
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONIOENCODING=utf-8
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+
+# 작업 디렉토리 설정
+WORKDIR /app
+
+# 시스템 패키지 설치
+RUN apt-get update && apt-get install -y \
+    git \
+    wget \
+    curl \
+    unzip \
+    ffmpeg \
+    libsndfile1 \
+    libsox-dev \
+    sox \
+    build-essential \
+    cmake \
+    && rm -rf /var/lib/apt/lists/*
+
+# pip 업그레이드
+RUN python -m pip install --upgrade pip
+
+# PyTorch CPU 버전 설치
+RUN pip install torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cpu
+
+# CosyVoice 의존성 설치
+COPY requirements.txt /app/requirements.txt
+RUN pip install -r requirements.txt --no-cache-dir
+
+# Gradio 의존성 설치
+COPY requirements_gradio.txt /app/requirements_gradio.txt
+RUN pip install -r requirements_gradio.txt --no-cache-dir
+
+# CPU 버전용 추가 패키지 설치
+RUN pip install \
+    librosa \
+    soundfile \
+    scipy \
+    inflect \
+    hyperpyyaml \
+    modelscope \
+    onnxruntime \
+    --no-cache-dir
+
+# git lfs 설치
+RUN curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | bash && \
+    apt-get install git-lfs && \
+    git lfs install
+
+# 애플리케이션 코드 복사
+COPY . /app/
+
+# Matcha-TTS 경로 설정
+RUN mkdir -p third_party/Matcha-TTS || true
+
+# 모델 다운로드 스크립트 (CPU 최적화)
+RUN echo '#!/bin/bash\n\
+echo "Downloading CosyVoice models (CPU optimized)..."\n\
+mkdir -p /app/pretrained_models\n\
+\n\
+# CPU에서는 더 가벼운 모델 우선 다운로드\n\
+if [ ! -d "/app/pretrained_models/CosyVoice-300M-SFT" ]; then\n\
+    echo "Downloading CosyVoice-300M-SFT (recommended for CPU)..."\n\
+    python -c "from modelscope import snapshot_download; snapshot_download('"'"'iic/CosyVoice-300M-SFT'"'"', local_dir='"'"'/app/pretrained_models/CosyVoice-300M-SFT'"'"')"\n\
+fi\n\
+\n\
+if [ ! -d "/app/pretrained_models/CosyVoice-ttsfrd" ]; then\n\
+    echo "Downloading CosyVoice-ttsfrd..."\n\
+    python -c "from modelscope import snapshot_download; snapshot_download('"'"'iic/CosyVoice-ttsfrd'"'"', local_dir='"'"'/app/pretrained_models/CosyVoice-ttsfrd'"'"')"\n\
+fi\n\
+\n\
+# CosyVoice2는 선택적으로 다운로드 (메모리가 충분한 경우)\n\
+if [ "${DOWNLOAD_LARGE_MODEL:-false}" = "true" ]; then\n\
+    if [ ! -d "/app/pretrained_models/CosyVoice2-0.5B" ]; then\n\
+        echo "Downloading CosyVoice2-0.5B..."\n\
+        python -c "from modelscope import snapshot_download; snapshot_download('"'"'iic/CosyVoice2-0.5B'"'"', local_dir='"'"'/app/pretrained_models/CosyVoice2-0.5B'"'"')"\n\
+    fi\n\
+fi\n\
+\n\
+echo "Model download completed!"\n' > /app/download_models.sh
+
+RUN chmod +x /app/download_models.sh
+
+# 컨테이너 시작 스크립트 (CPU 최적화)
+RUN echo '#!/bin/bash\n\
+set -e\n\
+\n\
+echo "🎙️ CosyVoice Docker Container Starting (CPU Mode)..."\n\
+\n\
+# CPU 최적화 설정\n\
+export OMP_NUM_THREADS=4\n\
+export MKL_NUM_THREADS=4\n\
+export TORCH_THREADS=4\n\
+\n\
+echo "⚙️ Running on CPU with optimized threading"\n\
+echo "CPU cores: $(nproc)"\n\
+\n\
+# 모델 다운로드\n\
+echo "📥 Checking and downloading models if needed..."\n\
+/app/download_models.sh\n\
+\n\
+# Gradio 앱 실행\n\
+echo "🚀 Starting Gradio web app (CPU mode)..."\n\
+echo "🌐 Web interface will be available at: http://localhost:7860"\n\
+echo "⚠️ CPU 모드는 GPU 대비 느릴 수 있습니다."\n\
+python /app/gradio_app.py\n' > /app/start.sh
+
+RUN chmod +x /app/start.sh
+
+# 포트 노출
+EXPOSE 7860
+
+# 볼륨 마운트 포인트
+VOLUME ["/app/pretrained_models"]
+
+# 기본 실행 명령
+CMD ["/app/start.sh"]
+
+# 헬스체크 (CPU는 더 느리므로 타임아웃 증가)
+HEALTHCHECK --interval=30s --timeout=30s --start-period=120s --retries=3 \
+    CMD curl -f http://localhost:7860 || exit 1

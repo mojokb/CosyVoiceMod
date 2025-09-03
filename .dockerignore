@@ -1,0 +1,75 @@
+# Git 관련
+.git
+.gitignore
+.gitmodules
+
+# Python 캐시
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env
+.venv
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# 로그 파일
+*.log
+logs/
+
+# 임시 파일
+*.tmp
+*.temp
+temp/
+tmp/
+
+# OS 관련
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE 관련
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 테스트 관련
+.coverage
+.pytest_cache/
+.tox/
+
+# 문서화 관련
+docs/
+*.md
+!README.md
+
+# Docker 관련
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# 빌드 관련
+build/
+dist/
+*.egg-info/
+
+# 대용량 파일 (이미 컨테이너에서 다운로드함)
+pretrained_models/
+*.pt
+*.pth
+*.onnx
+*.bin
+
+# 사용자 데이터
+uploads/
+outputs/
+cache/

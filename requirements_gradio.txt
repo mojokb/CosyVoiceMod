@@ -1,0 +1,9 @@
+gradio>=4.0.0
+torch>=2.0.0
+torchaudio
+transformers>=4.21.0
+whisper-openai
+librosa
+numpy
+scipy
+soundfile

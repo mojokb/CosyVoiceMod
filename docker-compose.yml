@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  cosyvoice-gradio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cosyvoice-gradio:latest
+    container_name: cosyvoice-app
+    ports:
+      - "7860:7860"
+    volumes:
+      # 모델 캐시 볼륨 (한 번 다운로드하면 재사용)
+      - cosyvoice_models:/app/pretrained_models
+      # 사용자 업로드 파일 임시 저장용
+      - cosyvoice_temp:/tmp
+    environment:
+      - PYTHONUNBUFFERED=1
+      - CUDA_VISIBLE_DEVICES=0  # GPU 사용시
+      - GRADIO_SERVER_NAME=0.0.0.0
+      - GRADIO_SERVER_PORT=7860
+      # HuggingFace 캐시 설정
+      - HF_HOME=/app/.cache/huggingface
+      - HF_HUB_CACHE=/app/.cache/huggingface/hub
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  # CPU 전용 버전 (GPU가 없는 환경용)
+  cosyvoice-gradio-cpu:
+    build:
+      context: .
+      dockerfile: Dockerfile.cpu
+    image: cosyvoice-gradio:cpu
+    container_name: cosyvoice-app-cpu
+    ports:
+      - "7860:7860"
+    volumes:
+      - cosyvoice_models:/app/pretrained_models
+      - cosyvoice_temp:/tmp
+    environment:
+      - PYTHONUNBUFFERED=1
+      - GRADIO_SERVER_NAME=0.0.0.0
+      - GRADIO_SERVER_PORT=7860
+      - CUDA_VISIBLE_DEVICES=""  # CPU 강제 사용
+    restart: unless-stopped
+    profiles:
+      - cpu  # CPU 전용 프로필
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s  # CPU는 더 오래 걸림
+
+volumes:
+  cosyvoice_models:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./pretrained_models
+  cosyvoice_temp:
+    driver: local
+
+networks:
+  default:
+    name: cosyvoice-network
