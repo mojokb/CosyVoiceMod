@@ -34,27 +34,9 @@ RUN ln -s /usr/bin/python3 /usr/bin/python
 # pip 업그레이드
 RUN python -m pip install --upgrade pip
 
-# PyTorch 및 기본 의존성 설치 (CUDA 11.8 호환)
-RUN pip install torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cu118
-
-# CosyVoice 의존성 설치
+# CosyVoice 의존성 설치 (PyTorch, Gradio 등 모든 필요 패키지 포함)
 COPY requirements.txt /app/requirements.txt
 RUN pip install -r requirements.txt --no-cache-dir
-
-# Gradio 의존성 설치
-COPY requirements_gradio.txt /app/requirements_gradio.txt
-RUN pip install -r requirements_gradio.txt --no-cache-dir
-
-# 추가 필수 패키지 설치
-RUN pip install \
-    librosa \
-    soundfile \
-    scipy \
-    inflect \
-    hyperpyyaml \
-    modelscope \
-    onnxruntime-gpu \
-    --no-cache-dir
 
 # git lfs 설치 (모델 다운로드용)
 RUN curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | bash && \
