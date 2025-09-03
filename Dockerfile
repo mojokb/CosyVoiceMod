@@ -13,9 +13,7 @@ WORKDIR /app
 
 # 시스템 패키지 설치
 RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip \
-    python3-dev \
+    software-properties-common \
     git \
     wget \
     curl \
@@ -28,11 +26,25 @@ RUN apt-get update && apt-get install -y \
     cmake \
     && rm -rf /var/lib/apt/lists/*
 
-# Python 심볼릭 링크 생성
-RUN ln -s /usr/bin/python3 /usr/bin/python
+# Python 3.10 설치
+RUN add-apt-repository ppa:deadsnakes/ppa && \
+    apt-get update && \
+    apt-get install -y \
+    python3.10 \
+    python3.10-dev \
+    python3.10-venv \
+    python3.10-distutils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python 3.10을 기본 Python으로 설정
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1 && \
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
+
+# pip 설치
+RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.10
 
 # pip 업그레이드
-RUN python -m pip install --upgrade pip
+RUN python -m pip install --upgrade pip setuptools wheel
 
 # CosyVoice 의존성 설치 (PyTorch, Gradio 등 모든 필요 패키지 포함)
 COPY requirements.txt /app/requirements.txt
