@@ -1,5 +1,5 @@
 # CosyVoice Gradio Docker Image
-FROM nvidia/cuda:11.8-cudnn8-devel-ubuntu20.04
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
 
 # 환경 변수 설정
 ENV DEBIAN_FRONTEND=noninteractive
