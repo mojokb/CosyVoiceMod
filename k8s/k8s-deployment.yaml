@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cosy-voice-gradio
+  namespace: default
+  labels:
+    app: cosy-voice
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cosy-voice
+  template:
+    metadata:
+      labels:
+        app: cosy-voice
+    spec:
+      containers:
+      - name: cosy-voice-gradio
+        image: harbor.zipsa-lab.com/library/cosy-voice-gradio:0.0.1
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 7860
+          name: gradio
+          protocol: TCP
+        resources:
+          requests:
+            memory: "4Gi"
+            cpu: "2"
+            nvidia.com/gpu: "1"
+          limits:
+            memory: "8Gi"
+            cpu: "4"
+            nvidia.com/gpu: "1"
+        volumeMounts:
+        - name: cosy-voice-storage
+          mountPath: /app/data
+        - name: model-cache
+          mountPath: /root/.cache
+        env:
+        - name: CUDA_VISIBLE_DEVICES
+          value: "0"
+        - name: GRADIO_SERVER_NAME
+          value: "0.0.0.0"
+        - name: GRADIO_SERVER_PORT
+          value: "7860"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 7860
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 7860
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+      volumes:
+      - name: cosy-voice-storage
+        persistentVolumeClaim:
+          claimName: cosy-voice-pvc
+      - name: model-cache
+        emptyDir:
+          sizeLimit: 20Gi
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
