@@ -127,6 +127,4 @@ VOLUME ["/app/pretrained_models"]
 # 기본 실행 명령
 CMD ["/app/start.sh"]
 
-# 헬스체크 추가
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:7860/api/v1/status || exit 1
+# K8s에서 probe로 헬스체크를 수행하므로 Dockerfile HEALTHCHECK 제거
