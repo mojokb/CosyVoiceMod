@@ -101,6 +101,28 @@ RUN pip install --no-cache-dir \
 RUN pip install --no-cache-dir \
     openai-whisper==20231117
 
+# CosyVoice 핵심 의존성 설치
+RUN pip install --no-cache-dir \
+    # CosyVoice 특화 패키지들
+    conformer==0.3.2 \
+    HyperPyYAML==1.2.2 \
+    lightning==2.2.4 \
+    networkx==3.1 \
+    pyworld==0.3.4 \
+    tensorboard==2.14.0 \
+    diffusers==0.29.0 \
+    # 기타 유틸리티
+    gdown==5.1.0 \
+    pyarrow==18.1.0 \
+    pydantic==2.7.0 \
+    wetext==0.0.4 \
+    wget==3.2
+
+# DeepSpeed는 Linux에서만 설치
+RUN if [ "$(uname)" = "Linux" ]; then \
+        pip install --no-cache-dir deepspeed==0.15.1; \
+    fi
+
 # Gradio 웹 프레임워크 설치
 RUN pip install --no-cache-dir \
     gradio==5.4.0
@@ -109,6 +131,12 @@ RUN pip install --no-cache-dir \
 RUN pip install --no-cache-dir \
     huggingface-hub==0.23.0 \
     modelscope==1.20.0
+
+# FastAPI (API 서버용)
+RUN pip install --no-cache-dir \
+    fastapi==0.115.6 \
+    fastapi-cli==0.0.4 \
+    uvicorn==0.30.0
 
 # ONNX Runtime 설치 (GPU 지원)
 RUN pip install --no-cache-dir \
@@ -171,8 +199,43 @@ chmod +x /app/system_info.sh
 # 헬시체크용 도구 설치
 RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
+# 모델 다운로드 스크립트 생성 및 사전 다운로드
+COPY <<EOF /app/download_models.sh
+#!/bin/bash
+set -e
+
+echo "🔄 CosyVoice 모델 사전 다운로드 중..."
+mkdir -p /app/pretrained_models
+
+download_model() {
+    local model_id="\$1"
+    local local_dir="\$2"
+    
+    echo "📥 \$model_id 다운로드 중..."
+    python -c "
+from modelscope import snapshot_download
+import os
+try:
+    snapshot_download('\$model_id', local_dir='\$local_dir')
+    print('✅ \$model_id 다운로드 완료')
+except Exception as e:
+    print(f'❌ \$model_id 다운로드 실패: {e}')
+    exit(1)
+"
+}
+
+# 필수 모델들 사전 다운로드
+download_model "iic/CosyVoice2-0.5B" "/app/pretrained_models/CosyVoice2-0.5B"
+download_model "iic/CosyVoice-300M-SFT" "/app/pretrained_models/CosyVoice-300M-SFT"
+download_model "iic/CosyVoice-ttsfrd" "/app/pretrained_models/CosyVoice-ttsfrd"
+
+echo "🎉 베이스 이미지 모델 다운로드 완료!"
+EOF
+
+RUN chmod +x /app/download_models.sh && /app/download_models.sh
+
 # 베이스 이미지임을 표시하는 파일 생성
-RUN echo "CosyVoice Base Image v2.0-rtx3090" > /app/.base_image_info
+RUN echo "CosyVoice Base Image v2.0-rtx3090 with preloaded models" > /app/.base_image_info
 
 # 메타데이터
 LABEL maintainer="CosyVoice Team"

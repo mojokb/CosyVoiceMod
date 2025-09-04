@@ -1,27 +1,46 @@
 version: '3.8'
 
 services:
-  cosyvoice-gradio:
+  cosyvoice:
+    image: cosyvoice-app:rtx3090-v2.0
     build:
       context: .
-      dockerfile: Dockerfile
-    image: cosyvoice-gradio:latest
-    container_name: cosyvoice-app
+      dockerfile: Dockerfile.app
+      args:
+        - BASE_IMAGE=cosyvoice-base:rtx3090-v2.0
+    container_name: cosyvoice-gradio
+    restart: unless-stopped
+    
+    # 포트 매핑
     ports:
-      - "7860:7860"
-    volumes:
-      # 모델 캐시 볼륨 (한 번 다운로드하면 재사용)
-      - cosyvoice_models:/app/pretrained_models
-      # 사용자 업로드 파일 임시 저장용
-      - cosyvoice_temp:/tmp
+      - "7860:7860"  # Gradio Web UI
+      - "8000:8000"  # FastAPI (선택적)
+    
+    # 환경 변수
     environment:
-      - PYTHONUNBUFFERED=1
-      - CUDA_VISIBLE_DEVICES=0  # GPU 사용시
+      - CUDA_VISIBLE_DEVICES=0
       - GRADIO_SERVER_NAME=0.0.0.0
       - GRADIO_SERVER_PORT=7860
-      # HuggingFace 캐시 설정
-      - HF_HOME=/app/.cache/huggingface
-      - HF_HUB_CACHE=/app/.cache/huggingface/hub
+      - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:1024
+      - OMP_NUM_THREADS=8
+      - MKL_NUM_THREADS=8
+      
+      # 모델 다운로드 제어
+      - DOWNLOAD_INSTRUCT_MODEL=false
+      - DOWNLOAD_BASE_MODEL=false
+      
+      # Gradio 설정
+      - GRADIO_SHARE=false
+      - GRADIO_INBROWSER=false
+    
+    # 볼륨 매핑
+    volumes:
+      - ./pretrained_models:/app/pretrained_models  # 모델 저장
+      - ./cache:/app/.cache                         # 캐시
+      - /tmp:/tmp                                   # 임시 파일
+      - ./logs:/app/logs                           # 로그 (선택적)
+    
+    # GPU 설정
     deploy:
       resources:
         reservations:
@@ -29,51 +48,79 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    restart: unless-stopped
+    
+    # 헬스체크
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7860"]
+      test: ["CMD", "curl", "-f", "http://localhost:7860/"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 120s
+      start_period: 90s
+    
+    # 네트워크 설정
+    networks:
+      - cosyvoice-network
+    
+    # 리소스 제한 (선택적)
+    # mem_limit: 16g
+    # memswap_limit: 16g
+    # shm_size: 2g
 
-  # CPU 전용 버전 (GPU가 없는 환경용)
-  cosyvoice-gradio-cpu:
+  # 선택적: CPU 전용 버전
+  cosyvoice-cpu:
     build:
       context: .
       dockerfile: Dockerfile.cpu
-    image: cosyvoice-gradio:cpu
-    container_name: cosyvoice-app-cpu
+    image: cosyvoice-app:cpu
+    container_name: cosyvoice-gradio-cpu
+    restart: unless-stopped
     ports:
-      - "7860:7860"
+      - "7861:7860"  # 다른 포트 사용
     volumes:
-      - cosyvoice_models:/app/pretrained_models
-      - cosyvoice_temp:/tmp
+      - ./pretrained_models:/app/pretrained_models
+      - ./cache:/app/.cache
+      - /tmp:/tmp
     environment:
-      - PYTHONUNBUFFERED=1
+      - CUDA_VISIBLE_DEVICES=""  # CPU 강제 사용
       - GRADIO_SERVER_NAME=0.0.0.0
       - GRADIO_SERVER_PORT=7860
-      - CUDA_VISIBLE_DEVICES=""  # CPU 강제 사용
-    restart: unless-stopped
+      - OMP_NUM_THREADS=4
+      - MKL_NUM_THREADS=4
     profiles:
-      - cpu  # CPU 전용 프로필
+      - cpu  # 'docker-compose --profile cpu up'으로 실행
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7860"]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD", "curl", "-f", "http://localhost:7860/"]
+      interval: 45s
+      timeout: 15s
       retries: 3
       start_period: 180s  # CPU는 더 오래 걸림
+    networks:
+      - cosyvoice-network
 
-volumes:
-  cosyvoice_models:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./pretrained_models
-  cosyvoice_temp:
-    driver: local
+  # 선택적: Nginx 리버스 프록시
+  nginx:
+    image: nginx:alpine
+    container_name: cosyvoice-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/ssl:ro  # SSL 인증서 (선택적)
+    depends_on:
+      - cosyvoice
+    networks:
+      - cosyvoice-network
+    profiles:
+      - nginx  # 'docker-compose --profile nginx up'으로 실행
 
 networks:
-  default:
-    name: cosyvoice-network
+  cosyvoice-network:
+    driver: bridge
+
+volumes:
+  pretrained_models:
+    driver: local
+  cache:
+    driver: local
