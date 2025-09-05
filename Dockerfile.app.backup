@@ -39,46 +39,56 @@ RUN if [ -f .gitmodules ]; then \
 # Matcha-TTS 경로 생성
 RUN mkdir -p third_party/Matcha-TTS
 
-# 선택적 모델 다운로드를 위한 경량화된 스크립트
-COPY <<'SCRIPT_EOF' /app/download_optional_models.sh
+# 모델 다운로드 스크립트 생성 및 실행 권한 설정
+COPY <<EOF /app/download_models.sh
 #!/bin/bash
 set -e
 
+echo "🔄 CosyVoice 모델 다운로드 중..."
+mkdir -p /app/pretrained_models
+
 download_model() {
-    local model_id="$1"
-    local local_dir="$2"
+    local model_id="\$1"
+    local local_dir="\$2"
     
-    if [ ! -d "$local_dir" ] || [ -z "$(ls -A "$local_dir" 2>/dev/null)" ]; then
-        echo "📥 $model_id 다운로드 중..."
+    if [ ! -d "\$local_dir" ] || [ -z "\$(ls -A "\$local_dir" 2>/dev/null)" ]; then
+        echo "📥 \$model_id 다운로드 중..."
         python -c "
 from modelscope import snapshot_download
+import os
 try:
-    snapshot_download('$model_id', local_dir='$local_dir')
-    print('✅ $model_id 다운로드 완료')
+    snapshot_download('\$model_id', local_dir='\$local_dir')
+    print('✅ \$model_id 다운로드 완료')
 except Exception as e:
-    print(f'❌ $model_id 다운로드 실패: {e}')
+    print(f'❌ \$model_id 다운로드 실패: {e}')
+    exit(1)
 "
     else
-        echo "✅ $model_id 이미 존재"
+        echo "✅ \$model_id 이미 존재"
     fi
 }
 
+# 필수 모델들 다운로드
+download_model "iic/CosyVoice2-0.5B" "/app/pretrained_models/CosyVoice2-0.5B"
+download_model "iic/CosyVoice-300M-SFT" "/app/pretrained_models/CosyVoice-300M-SFT"
+download_model "iic/CosyVoice-ttsfrd" "/app/pretrained_models/CosyVoice-ttsfrd"
+
 # 선택적 모델들 (환경변수로 제어)
-if [ "$DOWNLOAD_INSTRUCT_MODEL" = "true" ]; then
-    echo "🔄 Instruct 모델 다운로드 중..."
+if [ "\$DOWNLOAD_INSTRUCT_MODEL" = "true" ]; then
     download_model "iic/CosyVoice-300M-Instruct" "/app/pretrained_models/CosyVoice-300M-Instruct"
 fi
 
-if [ "$DOWNLOAD_BASE_MODEL" = "true" ]; then
-    echo "🔄 Base 모델 다운로드 중..."
+if [ "\$DOWNLOAD_BASE_MODEL" = "true" ]; then
     download_model "iic/CosyVoice-300M" "/app/pretrained_models/CosyVoice-300M"
 fi
-SCRIPT_EOF
 
-RUN chmod +x /app/download_optional_models.sh
+echo "🎉 모든 모델 다운로드 완료!"
+EOF
 
-# 애플리케이션 시작 스크립트 (모델 다운로드 최적화)
-COPY <<'START_EOF' /app/start.sh
+RUN chmod +x /app/download_models.sh
+
+# 애플리케이션 시작 스크립트
+COPY <<EOF /app/start.sh
 #!/bin/bash
 set -e
 
@@ -108,26 +118,17 @@ free -h | head -2
 
 echo "🐍 Python 환경:"
 python --version
-echo "PyTorch 버전: $(python -c 'import torch; print(torch.__version__)')"
-echo "CUDA 사용 가능: $(python -c 'import torch; print(torch.cuda.is_available())')"
+echo "PyTorch 버전: \$(python -c 'import torch; print(torch.__version__)')"
+echo "CUDA 사용 가능: \$(python -c 'import torch; print(torch.cuda.is_available())')"
 
-# 베이스 이미지에서 사전 다운로드된 모델 확인
-echo "📥 베이스 이미지 모델 확인..."
-if [ -d "/app/pretrained_models" ] && [ "$(ls -A /app/pretrained_models)" ]; then
-    echo "✅ 베이스 이미지에서 사전 다운로드된 모델 발견:"
-    ls -la /app/pretrained_models/
-else
-    echo "⚠️ 베이스 이미지에 모델이 없음 - 볼륨 마운트 확인 필요"
-fi
-
-# 선택적 모델 다운로드
-echo "🔄 선택적 모델 다운로드..."
-/app/download_optional_models.sh
+# 모델 다운로드 확인
+echo "📥 모델 확인 및 다운로드..."
+/app/download_models.sh
 
 # Gradio 앱 실행 (기본 gradio_app.py, 없으면 webui.py 사용)
 echo "🌐 Gradio 웹 앱 시작..."
-echo "🔗 웹 인터페이스: http://localhost:$GRADIO_SERVER_PORT"
-echo "📊 시작 시간: $(date)"
+echo "🔗 웹 인터페이스: http://localhost:\$GRADIO_SERVER_PORT"
+echo "📊 시작 시간: \$(date)"
 
 cd /app
 if [ -f gradio_app.py ]; then
@@ -135,12 +136,12 @@ if [ -f gradio_app.py ]; then
     exec python gradio_app.py
 elif [ -f webui.py ]; then
     echo "📱 Legacy WebUI 실행 중..."
-    exec python webui.py --port $GRADIO_SERVER_PORT
+    exec python webui.py --port \$GRADIO_SERVER_PORT
 else
     echo "❌ 실행할 Gradio 앱이 없습니다."
     exit 1
 fi
-START_EOF
+EOF
 
 RUN chmod +x /app/start.sh
 
@@ -159,9 +160,8 @@ CMD ["/app/start.sh"]
 
 # 메타데이터
 LABEL maintainer="CosyVoice Team"
-LABEL version="2.0-app-rtx3090-optimized"  
-LABEL description="CosyVoice Gradio Application optimized for RTX 3090 with preloaded base models"
+LABEL version="2.0-app-rtx3090"  
+LABEL description="CosyVoice Gradio Application optimized for RTX 3090"
 LABEL base.image="cosyvoice-base:rtx3090-v2.0"
 LABEL app.type="gradio"
 LABEL gpu.architecture="ampere"
-LABEL optimization="model-preloading"
