@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl wget unzip zip tar \
     build-essential cmake pkg-config gcc g++ \
     git git-lfs \
-    ffmpeg libsndfile1-dev sox libsox-fmt-all \
+    ffmpeg libsndfile1-dev sox libsox-fmt-all libsox-dev \
     libasound2-dev portaudio19-dev \
     python3.10 python3.10-dev python3.10-venv python3-pip \
     && rm -rf /var/lib/apt/lists/*
@@ -69,36 +69,6 @@ RUN python -m pip install --no-cache-dir \
 RUN mkdir -p /app/.cache /app/pretrained_models /tmp && \
     chmod 755 /app /app/.cache /app/pretrained_models
 
-# ---- system_info.sh (간단 & 안전) ----
-RUN printf '%s\n' '#!/bin/bash' \
-'echo "🐳 CosyVoice Base Image Info"' \
-'echo "=========================="' \
-'grep PRETTY_NAME /etc/os-release | cut -d= -f2 | tr -d \"' \
-'echo -n "🐍 Python: "; python --version' \
-'echo -n "🔥 PyTorch: "; python -c "import torch; print(torch.__version__)"' \
-'echo -n "🎮 CUDA Available: "; python -c "import torch; print(torch.cuda.is_available())"' \
-'if command -v nvidia-smi >/dev/null 2>&1; then' \
-'  echo "🎯 GPU Info:"' \
-'  nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits' \
-'fi' \
-'echo "📦 Key Packages:"' \
-'python -m pip show torch torchvision torchaudio gradio openai-whisper transformers | grep -E "Name:|Version:"' \
-'echo "=========================="' \
-> /app/system_info.sh && chmod +x /app/system_info.sh
+RUN pip install hyperpyyaml
 
-# 베이스 마커
-RUN echo "CosyVoice Base Image v2.0-rtx3090" > /app/.base_image_info
-
-# Labels
-LABEL maintainer="CosyVoice Team" \
-      version="2.0-base-rtx3090" \
-      description="CosyVoice Base Image with PyTorch/cu121 and audio libs for RTX 3090" \
-      gpu.architecture="ampere" \
-      gpu.compute="8.6" \
-      base.image="true" \
-      cuda.version="12.1" \
-      python.version="3.10" \
-      pytorch.version="2.3.1"
-
-CMD ["/app/system_info.sh"]
-
+CMD ["sleep", "infinity"]
