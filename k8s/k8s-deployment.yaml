@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: cosy-voice-gradio
-  namespace: default
   labels:
     app: cosy-voice
 spec:
@@ -17,7 +16,7 @@ spec:
     spec:
       containers:
       - name: cosy-voice-gradio
-        image: harbor.zipsa-lab.com/library/cosy-voice-gradio:0.0.1
+        image: harbor.zipsa-lab.com/library/cosy-voice-gradio:0.0.2
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 7860
@@ -67,9 +66,3 @@ spec:
       - name: model-cache
         emptyDir:
           sizeLimit: 20Gi
-      nodeSelector:
-        nvidia.com/gpu.present: "true"
-      tolerations:
-      - key: nvidia.com/gpu
-        operator: Exists
-        effect: NoSchedule

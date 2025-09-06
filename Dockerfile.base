@@ -1,252 +1,74 @@
 # CosyVoice Base Image - RTX 3090 Optimized
-# 시스템 패키지, Python 환경, PyTorch 등 변경이 거의 없는 패키지들을 포함한 베이스 이미지
-FROM nvidia/cuda:12.1-cudnn8-devel-ubuntu22.04
+# 안정적인 시스템/파이썬/파이토치 스택만 포함 (변경 드문 것들)
+FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04
 
-# 환경 변수 설정
-ENV DEBIAN_FRONTEND=noninteractive
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONIOENCODING=utf-8
-ENV LANG=C.UTF-8
-ENV LC_ALL=C.UTF-8
+# ---- Env ----
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONIOENCODING=utf-8 \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+    TORCH_CUDA_ARCH_LIST="8.6" \
+    PYTORCH_CUDA_ALLOC_CONF="max_split_size_mb:512"
 
-# RTX 3090 최적화 설정
-ENV NVIDIA_VISIBLE_DEVICES=all
-ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
-ENV TORCH_CUDA_ARCH_LIST="8.6"  # RTX 3090 Ampere architecture
-ENV PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
-
-# 작업 디렉토리 설정
 WORKDIR /app
 
-# APT 패키지 레포지토리 업데이트 및 필수 시스템 패키지 설치
-RUN apt-get update && apt-get install -y \
-    # 시스템 기본 도구
-    software-properties-common \
-    ca-certificates \
-    curl \
-    wget \
-    unzip \
-    zip \
-    tar \
-    # 빌드 도구
-    build-essential \
-    cmake \
-    pkg-config \
-    gcc \
-    g++ \
-    # Git 및 버전 관리
-    git \
-    git-lfs \
-    # 오디오/비디오 처리 라이브러리 (변경 빈도 낮음)
-    ffmpeg \
-    libsndfile1-dev \
-    libsox-fmt-all \
-    sox \
-    libasound2-dev \
-    portaudio19-dev \
-    # Python 3.10 및 개발 도구
-    python3.10 \
-    python3.10-dev \
-    python3.10-venv \
-    python3.10-distutils \
-    python3-pip \
-    # 추가 개발 도구
-    htop \
-    nano \
-    vim \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+# ---- System deps (lean) ----
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl wget unzip zip tar \
+    build-essential cmake pkg-config gcc g++ \
+    git git-lfs \
+    ffmpeg libsndfile1-dev sox libsox-fmt-all libsox-dev \
+    libasound2-dev portaudio19-dev \
+    python3.10 python3.10-dev python3.10-venv python3-pip \
+    && rm -rf /var/lib/apt/lists/*
 
-# Python 3.10을 시스템 기본 Python으로 설정
+# Python aliases (ubuntu 22.04 기본 python3.10이지만, 명확히 고정)
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1 && \
     update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1 && \
     update-alternatives --install /usr/bin/pip pip /usr/bin/pip3 1
 
-# pip, setuptools, wheel 최신 버전으로 업그레이드
+# pip toolchain
 RUN python -m pip install --no-cache-dir --upgrade \
-    pip==24.0 \
-    setuptools==69.5.1 \
-    wheel==0.43.0
+    pip==24.0 setuptools==69.5.1 wheel==0.43.0
 
-# Git LFS 초기화
+# Git LFS
 RUN git lfs install --system
 
-# PyTorch 에코시스템 설치 (CUDA 12.1 호환)
-RUN pip install --no-cache-dir \
-    torch==2.3.1 \
-    torchaudio==2.3.1 \
-    torchvision==0.18.1 \
+# ---- PyTorch (CUDA 12.1) ----
+RUN python -m pip install --no-cache-dir \
+    torch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 \
     --index-url https://download.pytorch.org/whl/cu121
 
-# 핵심 ML/Audio 라이브러리 설치 (자주 변경되지 않는 것들)
-RUN pip install --no-cache-dir \
-    # 수치 계산 및 과학 계산
-    numpy==1.24.4 \
-    scipy==1.11.4 \
-    # 오디오 처리
-    librosa==0.10.2 \
-    soundfile==0.12.1 \
-    # 딥러닝 도구
+# ---- Core ML/Audio libs (stable) ----
+RUN python -m pip install --no-cache-dir \
+    numpy==1.24.4 scipy==1.11.4 \
+    librosa==0.10.2 soundfile==0.12.1 \
     transformers==4.51.3 \
-    # 이미지 처리
     Pillow==10.3.0 \
-    # 유틸리티
-    tqdm==4.66.4 \
-    requests==2.31.0 \
-    pyyaml==6.0.1 \
-    # 로깅
+    tqdm==4.66.4 requests==2.31.0 pyyaml==6.0.1 \
     rich==13.7.1
 
-# OpenAI Whisper 설치 (STT용)
-RUN pip install --no-cache-dir \
-    openai-whisper==20231117
+# Whisper (STT)
+RUN python -m pip install --no-cache-dir openai-whisper==20231117
 
-# CosyVoice 핵심 의존성 설치
-RUN pip install --no-cache-dir \
-    # CosyVoice 특화 패키지들
-    conformer==0.3.2 \
-    HyperPyYAML==1.2.2 \
-    lightning==2.2.4 \
-    networkx==3.1 \
-    pyworld==0.3.4 \
-    tensorboard==2.14.0 \
-    diffusers==0.29.0 \
-    # 기타 유틸리티
-    gdown==5.1.0 \
-    pyarrow==18.1.0 \
-    pydantic==2.7.0 \
-    wetext==0.0.4 \
-    wget==3.2
+# Gradio (UI)
+RUN python -m pip install --no-cache-dir gradio==5.4.0
 
-# DeepSpeed는 Linux에서만 설치
-RUN if [ "$(uname)" = "Linux" ]; then \
-        pip install --no-cache-dir deepspeed==0.15.1; \
-    fi
+# Model hubs
+RUN python -m pip install --no-cache-dir \
+    huggingface-hub==0.23.0 modelscope==1.20.0
 
-# Gradio 웹 프레임워크 설치
-RUN pip install --no-cache-dir \
-    gradio==5.4.0
+# (옵션) ONNX / TensorRT는 기본 제외 — 필요 시 앱 레이어에서 추가 권장
+# 예: python -m pip install --no-cache-dir onnx onnxruntime-gpu --extra-index-url <cuda12 index>
+# 예: python -m pip install --no-cache-dir tensorrt-cu12*  # 시스템 종속성 확인 필요
 
-# HuggingFace 및 ModelScope (모델 다운로드용)
-RUN pip install --no-cache-dir \
-    huggingface-hub==0.23.0 \
-    modelscope==1.20.0
+# ---- Dirs & perms ----
+RUN mkdir -p /app/.cache /app/pretrained_models /tmp && \
+    chmod 755 /app /app/.cache /app/pretrained_models
 
-# FastAPI (API 서버용)
-RUN pip install --no-cache-dir \
-    fastapi==0.115.6 \
-    fastapi-cli==0.0.4 \
-    uvicorn==0.30.0
+RUN pip install hyperpyyaml
 
-# ONNX Runtime 설치 (GPU 지원)
-RUN pip install --no-cache-dir \
-    onnx==1.16.0 \
-    onnxruntime-gpu==1.18.0 \
-    --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/
-
-# TensorRT 지원 (RTX 3090 최적화용)
-RUN pip install --no-cache-dir \
-    tensorrt-cu12==10.0.1 \
-    tensorrt-cu12-bindings==10.0.1 \
-    tensorrt-cu12-libs==10.0.1
-
-# 추가 유틸리티 패키지
-RUN pip install --no-cache-dir \
-    # 프로그레스 바
-    tqdm==4.66.4 \
-    # HTTP 클라이언트
-    httpx==0.27.0 \
-    # 병렬 처리
-    joblib==1.4.0 \
-    # 설정 관리
-    omegaconf==2.3.0 \
-    hydra-core==1.3.2 \
-    # 텍스트 처리
-    inflect==7.3.1 \
-    # 시각화
-    matplotlib==3.7.5 \
-    # 프로토콜 버퍼
-    protobuf==4.25.0 \
-    # 네트워킹
-    grpcio==1.57.0 \
-    grpcio-tools==1.57.0
-
-# 캐시 디렉토리 생성
-RUN mkdir -p /app/.cache /app/pretrained_models /tmp
-
-# 권한 설정
-RUN chmod 755 /app && \
-    chmod 755 /app/.cache && \
-    chmod 755 /app/pretrained_models
-
-# 환경 정보 출력 스크립트
-RUN echo '#!/bin/bash\n\
-echo "🐳 CosyVoice Base Image Info"\n\
-echo "=========================="\n\
-echo "🐧 OS: $(cat /etc/os-release | grep PRETTY_NAME | cut -d= -f2 | tr -d \")")\n\
-echo "🐍 Python: $(python --version)"\n\
-echo "🔥 PyTorch: $(python -c \"import torch; print(torch.__version__)\")"\n\
-echo "🎮 CUDA Available: $(python -c \"import torch; print(torch.cuda.is_available())\")"\n\
-if command -v nvidia-smi &> /dev/null; then\n\
-    echo "🎯 GPU Info:"\n\
-    nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits\n\
-fi\n\
-echo "📦 Installed Packages:"\n\
-pip list | grep -E "(torch|gradio|whisper|transformers)"\n\
-echo "=========================="\n' > /app/system_info.sh && \
-chmod +x /app/system_info.sh
-
-# 헬시체크용 도구 설치
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
-
-# 모델 다운로드 스크립트 생성 및 사전 다운로드
-COPY <<EOF /app/download_models.sh
-#!/bin/bash
-set -e
-
-echo "🔄 CosyVoice 모델 사전 다운로드 중..."
-mkdir -p /app/pretrained_models
-
-download_model() {
-    local model_id="\$1"
-    local local_dir="\$2"
-    
-    echo "📥 \$model_id 다운로드 중..."
-    python -c "
-from modelscope import snapshot_download
-import os
-try:
-    snapshot_download('\$model_id', local_dir='\$local_dir')
-    print('✅ \$model_id 다운로드 완료')
-except Exception as e:
-    print(f'❌ \$model_id 다운로드 실패: {e}')
-    exit(1)
-"
-}
-
-# 필수 모델들 사전 다운로드
-download_model "iic/CosyVoice2-0.5B" "/app/pretrained_models/CosyVoice2-0.5B"
-download_model "iic/CosyVoice-300M-SFT" "/app/pretrained_models/CosyVoice-300M-SFT"
-download_model "iic/CosyVoice-ttsfrd" "/app/pretrained_models/CosyVoice-ttsfrd"
-
-echo "🎉 베이스 이미지 모델 다운로드 완료!"
-EOF
-
-RUN chmod +x /app/download_models.sh && /app/download_models.sh
-
-# 베이스 이미지임을 표시하는 파일 생성
-RUN echo "CosyVoice Base Image v2.0-rtx3090 with preloaded models" > /app/.base_image_info
-
-# 메타데이터
-LABEL maintainer="CosyVoice Team"
-LABEL version="2.0-base-rtx3090"
-LABEL description="CosyVoice Base Image with PyTorch, Audio libs, and system packages for RTX 3090"
-LABEL gpu.architecture="ampere"
-LABEL gpu.compute="8.6"
-LABEL base.image="true"
-LABEL cuda.version="12.1"
-LABEL python.version="3.10"
-LABEL pytorch.version="2.3.1"
-
-# 기본 명령어 - 시스템 정보 출력
-CMD ["/app/system_info.sh"]
+CMD ["sleep", "infinity"]
